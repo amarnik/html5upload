@@ -1,0 +1,27 @@
+<!--
+To change this template, choose Tools | Templates
+and open the template in the editor.
+-->
+<!DOCTYPE html>
+<html>
+    <head>
+        <title></title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/require-jquery/0.25.0/require-jquery.min.js"></script>
+    </head>
+    <body>
+        <div>HTML5 File Upload</div>
+        
+        <input id="html5upload" type="file" name="files[]" multiple>
+        <script>
+            $(document).ready(function() {
+                require(['js/html5upload'], function(html5upload) {
+                    html5upload.init();
+                    
+                    console.log(html5upload);
+                });
+                
+            });
+        </script>
+    </body>
+</html>
