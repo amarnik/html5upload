@@ -18,11 +18,11 @@ define(['jquery'], function($) {
         , extractThumbnails: true
         , alertOnUnload: true
         , onUnloadMessage: "Files are still uploading."
-        , eventSubscribeFunction: $.subscribe // jquery tinu pub/sub by default
+        , eventSubscribeFunction: $.subscribe // jquery tiny pub/sub by default
         , eventUnsubscribeFunction: $.unsubscribe
         , eventPublishFunction: $.publish
         , eventPrefix: 'html5upload_'
-        , defaultThumb: 'image/defaultThumb.jpg'
+        , defaultThumb: 'images/defaultThumb.jpg'
     };
     
     var uploadInProgress = false;
@@ -30,6 +30,7 @@ define(['jquery'], function($) {
     var uploadQueue = [];
     var filesUploading = [];
     var fileId = 0;
+    var publish = null;
     
   
     /*
@@ -67,42 +68,42 @@ define(['jquery'], function($) {
          * @returns {undefined}
          */
         function readThumbnailFromExif() {
-            var fr = new FileReader( );
+            var fr = new FileReader();
+            var deferred = $.Deferred();
 
-            fr.onload       = function ( ) { };
-            fr.onloadstart  = function ( ) { };
-            fr.onerror      = function ( ) { };
-            fr.onloadend    = function ( )
-            {
+            fr.onload       = function() {};
+            fr.onloadstart  = function() {};
+            fr.onerror      = function() {};
+            fr.onloadend    = function() {
                 var binaryImage = fr.result;
                 
                 // read exif information
-                var exif = EXIF.readFromBinaryFile(new BinaryFile(binaryImage, 0, 131072));
-                console.log(exif);
-
+                //var exif = EXIF.readFromBinaryFile(new BinaryFile(binaryImage, 0, 131072));
+                //console.log(exif);
                 var thumb, nextEnd;
                 var start = 2, end = 2;
+                var angle = 0;
 
-                start = binaryImage.indexOf( "\xFF\xD8", 2 );
-                end = binaryImage.indexOf( "\xFF\xD9", start ) + 4;
-                nextEnd = binaryImage.indexOf( "\xFF\xD9", end + 2 ) + 4;
+                start = binaryImage.indexOf("\xFF\xD8", 2);
+                end = binaryImage.indexOf("\xFF\xD9", start) + 4;
+                nextEnd = binaryImage.indexOf("\xFF\xD9", end + 2) + 4;
 
-                if ( nextEnd > -1 && nextEnd > end)
-                {
+                if (nextEnd > -1 && nextEnd > end) {
                     end = nextEnd;
                 }
 
-                if ( start > -1 && end > -1 )
-                {
-                    thumb = binaryImage.slice( start, end );
-                    if ( thumb ) {
+                if (start > -1 && end > -1) {
+                    thumb = binaryImage.slice(start, end);
+                    if (thumb) {
                         thumbnail = "data:image/jpeg;base64," + btoa(thumb);
                     } else {
                         thumbnail = settings.defaultThumb;
                     }
                 }
 
-                if ( hasThumb == true ) {
+                
+                /*
+                if ( thumb == true ) {
                     // get correct image orientation
                     var swapWidthHeight = false;
                     if ( exif['Orientation'] > 0 ) {
@@ -124,22 +125,32 @@ define(['jquery'], function($) {
                                 break;
                         }
                     }
-                }
+                }*/
+                
+                publish('thumbnail-ready', {
+                    fileId: fileId
+                });
 
                 thumb = null;
                 binaryImage = null;
                 fr = null;
+                deferred.resolve();
             };
 
             // thumbnail is in exif in first 128kb of the file
-            fr.readAsBinaryString( slice(0, 131072) );
+            fr.readAsBinaryString(slice(0, 131072));
+            return deferred.promise();
+            
         }
         
         function getThumbnail() {
+            
+            console.log("getthumbnail");
+            console.log(thumbnail);
             if (thumbnail === null) {
                 thumbnail = readThumbnailFromExif();
             }
-            
+            console.log(thumbnail);
             return thumbnail;
         }
         
@@ -156,7 +167,7 @@ define(['jquery'], function($) {
      * @param {type} fileObj
      * @returns {undefined}
      */
-    function addToQueue(fileObj) {
+    function addToWaitingQueue(fileObj) {
         waitingQueue.push(fileObj);
         
         console.log(waitingQueue);
@@ -177,9 +188,37 @@ define(['jquery'], function($) {
         while (len > 0) {
             len--;
             fileObj = new File(files[len], fileId++);
-            addToQueue(fileObj);
+            addToWaitingQueue(fileObj);
         }
         
+        if (settings.extractThumbnails) {
+            processThumbnails();
+        }
+        
+    };
+    
+    /**
+     * extracts thumbnails from files
+     * @returns {undefined}
+     */
+    function processThumbnails() {
+        
+        var deferreds = [];
+        for (var i = 0, len = waitingQueue.length; i < len; i++) {
+            deferreds.push(waitingQueue[i].getThumbnail());
+        }
+        
+        $.when.apply(null, deferreds).done(function() {
+            console.log("ALL THUMBS READY!!!!");
+        });
+        
+    }
+    
+    function publish(eventName, eventData) {
+        if (settings.eventPublishFunction) {
+            eventName = (setting.eventPrefix || "") + eventName; 
+            settings.eventPublishFunction(eventName, eventData);
+        }
     };
     
     
@@ -192,6 +231,8 @@ define(['jquery'], function($) {
         if(newSettings) {
             $.merge(settings, newSettings);
         }
+        
+        console.log(settings);
         
         $(settings.fileInput).on('change', processFiles);
     };

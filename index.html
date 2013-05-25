@@ -8,11 +8,14 @@ and open the template in the editor.
         <title></title>
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/require-jquery/0.25.0/require-jquery.min.js"></script>
+        <script type="text/javascript" src="js/lib/jquery.ba-tinypubsub.js"></script>
     </head>
     <body>
         <div>HTML5 File Upload</div>
         
         <input id="html5upload" type="file" name="files[]" multiple>
+        
+        <div id="testDiv"></div>
         <script>
             $(document).ready(function() {
                 require(['js/html5upload'], function(html5upload) {
