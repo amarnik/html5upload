@@ -162,7 +162,7 @@ define(['jquery'], function($) {
                     , fileName: fileObj.name
                     , currentPart: uploadedParts + 1
                     , totalParts: totalParts
-                    , data: encodeURIComponent(e.target.result)
+                    , data: e.target.result
                 })
                 .done(function() {
                     uploadedParts++;
