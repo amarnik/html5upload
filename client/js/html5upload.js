@@ -8,6 +8,7 @@ define(['jquery'], function($) {
         fileInput: "#html5upload"
         , uploadUrl: '/upload/'
         , uploadMethod: 'POST'
+        , uploadData: {}
         , sliceUpload: true // send file slices instead of entire file at once (recommended for better js performance)
         , sliceSize: 20480 // size of each slice
         , sliceDelay: 20 // delay between each slice (for performance as well)
@@ -21,6 +22,7 @@ define(['jquery'], function($) {
         , eventSubscribeFunction: $.subscribe // jquery tiny pub/sub by default
         , eventUnsubscribeFunction: $.unsubscribe
         , eventPublishFunction: $.publish
+        , eventContext: null
         , eventPrefix: 'html5upload.'
         , defaultThumb: 'images/defaultThumb.jpg'
     };
@@ -47,6 +49,7 @@ define(['jquery'], function($) {
         var thumbnail = null;
         var uploadedParts = 0;
         var totalParts = 0;
+        var respData = {};
         
         
         /**
@@ -96,12 +99,11 @@ define(['jquery'], function($) {
                     end = nextEnd;
                 }
 
+                thumbnail = settings.defaultThumb;
                 if (start > -1 && end > -1) {
                     thumb = binaryImage.slice(start, end);
                     if (thumb) {
                         thumbnail = "data:image/jpeg;base64," + btoa(thumb);
-                    } else {
-                        thumbnail = settings.defaultThumb;
                     }
                 }
 
@@ -130,7 +132,6 @@ define(['jquery'], function($) {
                         }
                     }
                 }*/
-                
                 publishFileEvent('fileupload.thumb_ready');
 
                 thumb = null;
@@ -164,14 +165,15 @@ define(['jquery'], function($) {
                     , totalParts: totalParts
                     , data: e.target.result
                 })
-                .done(function() {
+                .done(function(data) {
                     uploadedParts++;
                     uploadedSize += sliceSize;
                     progress = Math.min(uploadedParts * 100 / totalParts, 100);
                     
                     if (progress === 100) {
-                        completeUpload();
+                        completeUpload(data);
                     } else {
+                        publishFileEvent('fileupload.progress');
                         setTimeout(uploadNextPart, settings.sliceDelay);
                     }
                 })
@@ -182,6 +184,7 @@ define(['jquery'], function($) {
                         uploadedParts = 0;
                         
                         publishFileEvent('fileupload.retry');
+                        setTimeout(uploadNextPart, settings.sliceDelay);
                     } else {
                         publishFileEvent('fileupload.failed');
                     }
@@ -217,8 +220,8 @@ define(['jquery'], function($) {
             uploadNextPart();
         }
         
-        function completeUpload() {
-            
+        function completeUpload(data) {
+            respData = data;
             completeFileUpload(fileId);
             
             // start upload event
@@ -232,11 +235,20 @@ define(['jquery'], function($) {
         function getThumbnail() {
             return thumbnail;
         }
+
+        /**
+         * returns server response json
+         * @returns {object} json response from the server
+         */
+        function getResponse() {
+            return respData;
+        }
         
         return {
             fileId: fileId
             , progress: progress
             , getThumbnail: getThumbnail
+            , getResponse: getResponse
             , readThumbnailFromExif: readThumbnailFromExif
             , startUpload: startUpload
         }
@@ -351,9 +363,8 @@ define(['jquery'], function($) {
     
     function completeFileUpload(fileId) {
         var fileObj = fileObjects[fileId];
-        
         for (var i = 0, len = filesUploading.length; i < len; i++) {
-            if (filesUploading === fileObj) {
+            if (filesUploading[i] === fileObj) {
                 filesUploading.splice(i, 1);
                 break;
             }
@@ -362,7 +373,7 @@ define(['jquery'], function($) {
         
         // upload progress event
         publishUploadEvent('upload.progress');
-        
+
         if (filesUploading.length < settings.maxParallerUploads) {
             setTimeout(processNextFile, settings.queueDelay);
         }
@@ -385,7 +396,11 @@ define(['jquery'], function($) {
     function publish(eventName, eventData) {
         if (settings.eventPublishFunction) {
             eventName = (settings.eventPrefix || "") + eventName; 
-            settings.eventPublishFunction(eventName, eventData);
+            if (settings.eventContext) {
+                settings.eventPublishFunction.call(settings.eventContext, eventName, eventData);
+            } else {
+                settings.eventPublishFunction(eventName, eventData);
+            }
         }
     };
     
@@ -397,6 +412,15 @@ define(['jquery'], function($) {
     function getPhotoThumbnail(fileId) {
         return fileObjects[fileId].getThumbnail();
     }
+
+    /**
+     * get the server response
+     * @param {int} fileId
+     * @returns {object} json object
+     */
+    function getUploadResponse(fileId) {
+        return fileObjects[fileId].getResponse();
+    }
     
     
     /**
@@ -405,11 +429,17 @@ define(['jquery'], function($) {
      * @returns {undefined}
      */
     function init(newSettings) {
+
         if(newSettings) {
-            $.merge(settings, newSettings);
+            $.extend(settings, newSettings);
         }
-        
+
         $(settings.fileInput).on('change', processFiles);
+        
+        settings.eventSubscribeFunction('html5upload.fileupload.thumb_ready', function(data) {
+            console.log("got html5upload.fileupload.thumb_ready");
+        });
+        
     };
     
     
@@ -418,6 +448,7 @@ define(['jquery'], function($) {
         , toString: "[object HTML5Uploader]"
         , init: init
         , getPhotoThumbnail: getPhotoThumbnail
+        , getUploadResponse: getUploadResponse
         , processQueue: processQueue
     };
 });
