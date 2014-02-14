@@ -25,6 +25,7 @@ define(['jquery'], function($) {
         , eventContext: null
         , eventPrefix: 'html5upload.'
         , defaultThumb: 'images/defaultThumb.jpg'
+        , initFileId: 0
     };
     
     var uploadInProgress = false;
@@ -50,6 +51,7 @@ define(['jquery'], function($) {
         var uploadedParts = 0;
         var totalParts = 0;
         var respData = {};
+        var canceled = false;
         
         
         /**
@@ -147,6 +149,9 @@ define(['jquery'], function($) {
         }
         
         function uploadNextPart() {
+            if (canceled == true) {
+                return;
+            }
             
             var sliceStart = uploadedParts * settings.sliceSize;
             var sliceEnd = Math.min((uploadedParts + 1) * settings.sliceSize, fileObj.size);
@@ -166,6 +171,9 @@ define(['jquery'], function($) {
                     , data: e.target.result
                 })
                 .done(function(data) {
+                    if (canceled == true) {
+                        return;
+                    }
                     uploadedParts++;
                     uploadedSize += sliceSize;
                     progress = Math.min(uploadedParts * 100 / totalParts, 100);
@@ -178,6 +186,9 @@ define(['jquery'], function($) {
                     }
                 })
                 .fail(function() {
+                    if (canceled == true) {
+                        return;
+                    }
                     if (retries < settings.uploadMaxRetries) {
                         retries++;
                         uploadedSize -= uploadedParts * settings.sliceSize;
@@ -186,7 +197,7 @@ define(['jquery'], function($) {
                         publishFileEvent('fileupload.retry');
                         setTimeout(uploadNextPart, settings.sliceDelay);
                     } else {
-                        publishFileEvent('fileupload.failed');
+                        failedUpload(data);
                     }
                 });
                 
@@ -227,6 +238,20 @@ define(['jquery'], function($) {
             // start upload event
             publishFileEvent('fileupload.completed');
         }
+
+        function failedUpload(data) {
+            respData = data;
+            completeFileUpload(fileId);
+            
+            // start upload event
+            publishFileEvent('fileupload.failed');
+        }
+
+        function cancelUpload() {
+            if (progress < 100) {
+                canceled = true;
+            }
+        }
         
         /**
          * returns image thumbnail
@@ -251,7 +276,8 @@ define(['jquery'], function($) {
             , getResponse: getResponse
             , readThumbnailFromExif: readThumbnailFromExif
             , startUpload: startUpload
-        }
+            , cancelUpload: cancelUpload
+        };
         
     };
     
@@ -345,6 +371,9 @@ define(['jquery'], function($) {
     function processNextFile() {
         // nothing to upload
         if (uploadQueue.length === 0) {
+            if (filesUploading.length === 0) {
+                publishUploadEvent('upload.completed');
+            }
             return;
         }
         
@@ -376,6 +405,17 @@ define(['jquery'], function($) {
 
         if (filesUploading.length < settings.maxParallerUploads) {
             setTimeout(processNextFile, settings.queueDelay);
+        }
+    }
+
+    /**
+     * cancels file upload if file is still not completed
+     *
+     */
+    function cancelFileUpload(fileId) {
+        if (fileObjects[fileId]) {
+            fileObjects[fileId].cancelUpload();
+            completeFileUpload(fileId);
         }
     }
     
@@ -432,12 +472,15 @@ define(['jquery'], function($) {
 
         if(newSettings) {
             $.extend(settings, newSettings);
+            fileId = settings.initFileId;
         }
 
         $(settings.fileInput).on('change', processFiles);
-        
-        settings.eventSubscribeFunction('html5upload.fileupload.thumb_ready', function(data) {
-            console.log("got html5upload.fileupload.thumb_ready");
+
+        settings.eventSubscribeFunction.call(settings.eventContext, 'html5upload.fileupload.cancel', function(data) {
+            if (data.fileId || data.fileId === 0) {
+                cancelFileUpload(data.fileId);
+            }
         });
         
     };
